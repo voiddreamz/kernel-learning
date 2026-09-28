@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="QEMU Debug" type="com.jetbrains.cidr.embedded.customgdbserver.type" factoryName="com.jetbrains.cidr.embedded.customgdbserver.factory" PROGRAM_PARAMS="" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="kernel" TARGET_NAME="system" version="1" RUN_TARGET_PROJECT_NAME="kernel" RUN_TARGET_NAME="system">
+    <custom-gdb-server version="1" gdb-connect="localhost:1234" executable="$CMakeCurrentBuildDir$/qemu-debug.sh" warmup-ms="1000" download-type="NONE" reset-cmd="" reset-type="NEVER" connection-mode="REMOTE" gdbserver-enable="false" console-enabled="false" console-port="0">
+      <debugger kind="GDB" isBundled="true" />
+      <extra-debugger-params debugger-working-dir="" debugger-env-pass-parent="true" custom-script="" />
+    </custom-gdb-server>
+    <method v="2">
+      <option name="CLION.COMPOUND.BUILD" enabled="true" />
+    </method>
+  </configuration>
+</component>

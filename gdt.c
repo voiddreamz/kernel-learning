@@ -3,8 +3,10 @@
 //
 
 #include "gdt.h"
+
 struct gdt_entry gdt[4]; // 这里定义四个，第一个是空的，第二个是给ring0的数据段，第三个给ring0的代码段，第四个给未来的TSS
 struct gdt_ptr gdtr;
+extern void gdt_flush(uint32_t);
 
 void set_dgt_gate(int num, uint32_t base,uint32_t limit,uint8_t access, uint8_t gran) {
     gdt[num].base_low = (base & 0xFFFF);
@@ -18,7 +20,6 @@ void set_dgt_gate(int num, uint32_t base,uint32_t limit,uint8_t access, uint8_t 
     gdt[num].access  = access;
 }
 
-extern void gdt_flush(uint32_t);
 // 内核初始化 GDT 的主入口
 void gdt_install() {
     gdtr.limit=(sizeof(struct gdt_entry)* 4) -1;
