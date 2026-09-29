@@ -13,9 +13,9 @@ void c_main() {
         i++;
         j+=2;
     }
-    volatile int a = 10;
-    volatile int b = 0;
-    int c = a / b;
+    // volatile int a = 10;
+    // volatile int b = 0;
+    // int c = a / b;
 
     while (1);
 }

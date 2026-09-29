@@ -86,7 +86,10 @@ add_custom_target(loader DEPENDS ${LOADER_OBJ})
 # ============================================================
 # 2b. 其余 .asm -> elf32 目标文件（gdt_flush.asm，以及以后新增的汇编）
 # ============================================================
-set(KERNEL_ASM_OBJS "")
+set(KERNEL_ASM_OBJS ""
+        isr.h
+        type.h
+        isr.c)
 foreach (asm_src IN LISTS KERNEL_ASM_SOURCES)
     get_filename_component(asm_name ${asm_src} NAME_WE)
     set(asm_obj ${OUT_DIR}/${asm_name}.o)

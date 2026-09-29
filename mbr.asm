@@ -11,25 +11,25 @@ SECTION MBR vstart=0x7c00
     mov sp,0x7c00
     mov ax,0xb800
     mov gs,ax
-    ; 这一段内容并非此程序的主要内容，而是在做一个打印，强调我们现在运行在MBR。
-    ;调用0x06的功能，调用10号中断
-    ;AH=0x06
-    ;AL=0 表示全部要清除
-    ;BH= 上卷行的属性
-    ;(CL,CH)=x,y(左上角)
-    ;(DL,DH)=x,y(右下角)
-    mov ax,0600h
-    mov bx,0700h
-    mov cx,0
-    mov dx,184fh  ;(80,25)相当于设定分辨率
-    int 10h
-    ; 输出一下当前在MBR
-    mov byte [gs:0x00], 'M'
-    mov byte [gs:0x01], 0xA4
-    mov byte [gs:0x02], 'B'
-    mov byte [gs:0x03], 0xA4
-    mov byte [gs:0x04], 'R'
-    mov byte [gs:0x05], 0xA4
+;     ; 这一段内容并非此程序的主要内容，而是在做一个打印，强调我们现在运行在MBR。
+;     ;调用0x06的功能，调用10号中断
+;     ;AH=0x06
+;     ;AL=0 表示全部要清除
+;     ;BH= 上卷行的属性
+;     ;(CL,CH)=x,y(左上角)
+;     ;(DL,DH)=x,y(右下角)
+;     mov ax,0600h
+;     mov bx,0700h
+;     mov cx,0
+;     mov dx,184fh  ;(80,25)相当于设定分辨率
+;     int 10h
+;     ; 输出一下当前在MBR
+;     mov byte [gs:0x00], 'M'
+;     mov byte [gs:0x01], 0xA4
+;     mov byte [gs:0x02], 'B'
+;     mov byte [gs:0x03], 0xA4
+;     mov byte [gs:0x04], 'R'
+;     mov byte [gs:0x05], 0xA4
     ;此处开始调用磁盘读写。
     mov eax, LOADER_START_ADDR ;LBA方式读入的扇区
     mov bx,LOADER_BASE_ADDR    ;写入的地址

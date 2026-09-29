@@ -1,10 +1,11 @@
 //
 // Created by voiddreamz on 2026/9/28.
+// it is used for stack the idt's data struct
 //
 
 #ifndef KERNEL_IDT_H
 #define KERNEL_IDT_H
-#include <stdint.h>
+#include "type.h"
 
 struct idt_entry {
     uint16_t base_low; // 急救函数地址的低 16 位
@@ -21,5 +22,6 @@ struct idt_ptr {
     uint16_t limit;
     uint32_t base;
 } __attribute__((packed));
+
 
 #endif //KERNEL_IDT_H

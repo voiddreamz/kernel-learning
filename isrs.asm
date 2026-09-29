@@ -54,6 +54,39 @@ ISR_NOERRORCODE 28
 ISR_NOERRORCODE 29
 ISR_NOERRORCODE 30
 ISR_NOERRORCODE 31
+
+isr_common_stub:
+    ;压栈保护现场
+    pusha
+    ;压栈这个不会处理段处理器。
+    ;这里把它放到eax里面是为了让它对其到32位（4byte）
+    mov ax,es
+    push eax
+    ;然后进入我们的平坦模型的第三段，即是data段
+    ;为什么我们这里要切换到data段：因为现在都在ring0里面运行没有问题。
+    ;但是如果我们现在是一个ring3的程序出问题要调用中断了，CPU调用它的时候会自动把cs切换成ring0（0x08)
+    ;但是我们此时es是一个诸如0x23的数字，它的权限是不够的
+    mov ax,0x10
+    mov ds,ax
+    mov es,ax
+    mov fs,ax
+    mov gs,ax
+
+    push esp
+    call fault_handle
+
+    pop eax
+    mov ds,ax
+
+    mov es,ax
+    mov fs,ax
+    mov gs,ax
+
+    popa
+    add esp, 8
+    sti
+    iret
+    
 ; isr0:
 ;     ;先关闭中断，
 ;     cli

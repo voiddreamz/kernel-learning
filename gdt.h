@@ -4,9 +4,7 @@
 
 #ifndef KERNEL_GDT_H
 #define KERNEL_GDT_H
-#include <stdint.h>
-#endif //KERNEL_GDT_H
-
+#include "type.h"
 struct gdt_entry {
     uint16_t limit_low;
     uint16_t base_low;
@@ -19,3 +17,5 @@ struct gdt_ptr {
     uint16_t limit;
     uint32_t base;
 }__attribute__((packed));
+#endif //KERNEL_GDT_H
+
