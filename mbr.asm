@@ -18,11 +18,11 @@ SECTION MBR vstart=0x7c00
 ;     ;BH= 上卷行的属性
 ;     ;(CL,CH)=x,y(左上角)
 ;     ;(DL,DH)=x,y(右下角)
-;     mov ax,0600h
-;     mov bx,0700h
-;     mov cx,0
-;     mov dx,184fh  ;(80,25)相当于设定分辨率
-;     int 10h
+    mov ax,0600h
+    mov bx,0700h
+    mov cx,0
+    mov dx,184fh  ;(80,25)相当于设定分辨率
+    int 10h
 ;     ; 输出一下当前在MBR
 ;     mov byte [gs:0x00], 'M'
 ;     mov byte [gs:0x01], 0xA4
@@ -33,7 +33,8 @@ SECTION MBR vstart=0x7c00
     ;此处开始调用磁盘读写。
     mov eax, LOADER_START_ADDR ;LBA方式读入的扇区
     mov bx,LOADER_BASE_ADDR    ;写入的地址
-    mov cx, 15                  ;读入的扇区数
+    ;调用链接器，来通过它完成自动扇区数设置
+    mov cx, KERNEL_SECTORS
     call rd_disk
     jmp LOADER_BASE_ADDR       ;跳到实际内存
 

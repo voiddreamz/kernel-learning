@@ -3,7 +3,6 @@
 //
 
 #include "gdt.h"
-
 struct gdt_entry gdt[4]; // 这里定义四个，第一个是空的，第二个是给ring0的数据段，第三个给ring0的代码段，第四个给未来的TSS
 struct gdt_ptr gdtr;
 extern void gdt_flush(uint32_t);

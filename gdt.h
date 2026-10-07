@@ -4,7 +4,7 @@
 
 #ifndef KERNEL_GDT_H
 #define KERNEL_GDT_H
-#include "type.h"
+#include "general.h"
 struct gdt_entry {
     uint16_t limit_low;
     uint16_t base_low;

@@ -10,5 +10,6 @@
 #define int32 uint32_t
 #define int16 uint16_t
 #define int8  uint8_t
+extern void print_memory(char* str,int line,int color);
 
 #endif //KERNEL_TYPE_H

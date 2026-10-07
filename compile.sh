@@ -41,8 +41,6 @@ build() {
     # ==========================================
     # 1. 编译阶段
     # ==========================================
-    echo "编译 MBR..."
-    nasm -f bin mbr.asm -o "$BUILD_DIR/mbr.bin"
 
     echo "编译汇编跳板 (Loader)..."
     # elf32 + dwarf，方便 gdb 调试；loader.asm extern 了 C 函数所以不能用 bin
@@ -87,7 +85,7 @@ build() {
     # -Ttext 0x900 必须和 mbr.asm 里的 LOADER_BASE_ADDR 保持一致
     # 顺序不能换：loader.o 放最前面，保证 _start 正好落在 0x900
     # 输出 ELF（带符号表和调试信息）给 GDB 用，实际启动的二进制由它剥出来
-    ld -m elf_i386 -z noexecstack -Ttext 0x900 \
+    ld -m elf_i386 -z noexecstack -T linker.ld \
         -Map "$BUILD_DIR/system.map" \
         "${ASM_OBJS[@]}" \
         "${C_OBJS[@]}" \
@@ -95,6 +93,13 @@ build() {
 
     # 只保留 .text/.rodata/.data 这些要装进内存的段，调试段和符号表不进镜像
     objcopy -O binary "$BUILD_DIR/system.elf" "$BUILD_DIR/system.bin"
+
+    KERNEL_SIZE=$(wc -c < ./build/system.bin)
+    SECTORS=$(((KERNEL_SIZE+511)/512))
+    #我们将mbr的部分拖到现在，因为我们的mbr需要计算system.bin的数据所占扇区大小。
+    echo "编译 MBR..."
+    nasm -f bin mbr.asm -D KERNEL_SECTORS=$SECTORS -o "$BUILD_DIR/mbr.bin"
+
 
     echo "制作硬盘镜像 ($BUILD_DIR/os.img)..."
     # 创建一个 1MB 的空白虚拟硬盘文件（用 0 填充）
@@ -122,7 +127,7 @@ run_qemu() {
     # 3. 虚拟机启动阶段
     # ==========================================
     echo "启动 QEMU..."
-    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M
+    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M -cpu qemu64,+svm
 }
 
 debug_qemu() {
@@ -135,7 +140,7 @@ debug_qemu() {
     #       -ex "target remote localhost:1234"
     echo "启动 QEMU（已暂停），gdbserver: localhost:1234"
     echo "符号文件: $BUILD_DIR/system.elf"
-    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M \
+    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M -cpu qemu64,+svm \
         -gdb tcp::1234 -S -no-reboot
 }
 

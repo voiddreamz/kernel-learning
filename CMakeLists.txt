@@ -3,11 +3,12 @@ project(kernel C)
 
 # ============================================================
 # 本项目是 x86 实模式/保护模式的裸机内核，没有操作系统和 libc：
-#   1. nasm    -> mbr.asm    (flat bin, 放到磁盘 LBA0)
-#   2. nasm    -> *.asm       (elf32 目标文件, 自动收集)
-#   3. gcc     -> *.c         (32 位 freestanding, 带 DWARF, 自动收集)
-#   4. gcc/ld  -> system.elf (真正的可执行目标, 带符号和调试信息, 基址 0x900)
-#   5. objcopy -> system.bin (由 ELF 剥出来的裸二进制，给 QEMU 启动用)
+#   1. nasm    -> *.asm       (elf32 目标文件, 自动收集, loader.asm 排链接顺序最前)
+#   2. gcc     -> *.c         (32 位 freestanding, 带 DWARF, 自动收集)
+#   3. gcc/ld  -> system.elf (真正的可执行目标, 带符号和调试信息, 基址 0x900)
+#   4. objcopy -> system.bin (由 ELF 剥出来的裸二进制，给 QEMU 启动用)
+#   5. nasm    -> mbr.bin    (flat bin, 放到磁盘 LBA0；
+#                              KERNEL_SECTORS 由 system.bin 大小算出，所以必须后编译)
 #   6. 拼镜像: mbr.bin@0x0000 + system.bin@0x0400(LBA2)
 #   7. qemu-system-i386 启动
 #
@@ -28,39 +29,48 @@ else ()
     find_program(OBJCOPY_EXECUTABLE NAMES objcopy i686-elf-objcopy REQUIRED)
 endif ()
 
-# ---------- 32 位 freestanding 编译选项 ----------
-# 只作用于 C 代码（本项目没有宿主机可执行文件，所以全局加上是安全的）
+# ---------- 汇编语言（nasm）----------
+# 汇编统一交给 CMake 的 ASM_NASM 语言处理，等价于 nasm -f elf32 -F dwarf -g。
+# 注意：OBJECT_FORMAT 必须在 enable_language 之前设置，否则 x86_64 上默认生成 elf64。
+set(CMAKE_ASM_NASM_OBJECT_FORMAT elf32)
+set(CMAKE_ASM_NASM_FLAGS "-F dwarf -g")
+enable_language(ASM_NASM)
+
+# ---------- 32 位 freestanding 编译选项（只给 C 用）----------
+# 用 $<COMPILE_LANGUAGE:C> 包起来：汇编走 nasm，不认识 -m32 这类 gcc 选项。
 add_compile_options(
-        -m32                     # 32 位指令集，和 loader.asm 的 BITS 32 保持一致
-        -ffreestanding           # 告诉编译器：没有标准库
-        -fno-pie -fno-pic        # 不生成位置无关代码，链接地址是固定的 0x900
-        -fno-stack-protector     # 没有 canary 的运行时支持
-        -fno-builtin             # 不要把手写循环优化成 memcpy/strlen 这类外部调用
-        -mno-sse -mno-mmx        # 内核里不能随便用 SSE/MMX（CR0/CR4 未开启）
-        -fno-omit-frame-pointer  # 保留 ebp 栈帧，CLion/GDB 才能正确回溯调用栈
-        -fno-asynchronous-unwind-tables # 裸机用不到 .eh_frame，去掉可减小镜像
-        -Wall -Wextra
-        -g                       # DWARF 调试信息：断点、变量、内存查看全靠它
+        $<$<COMPILE_LANGUAGE:C>:-m32>    # 32 位指令集，和 loader.asm 的 BITS 32 保持一致
+        $<$<COMPILE_LANGUAGE:C>:-ffreestanding>           # 告诉编译器：没有标准库
+        $<$<COMPILE_LANGUAGE:C>:-fno-pie> $<$<COMPILE_LANGUAGE:C>:-fno-pic>  # 不生成位置无关代码，链接地址固定 0x900
+        $<$<COMPILE_LANGUAGE:C>:-fno-stack-protector>     # 没有 canary 的运行时支持
+        $<$<COMPILE_LANGUAGE:C>:-fno-builtin>             # 不要把手写循环优化成 memcpy/strlen 这类外部调用
+        $<$<COMPILE_LANGUAGE:C>:-mno-sse> $<$<COMPILE_LANGUAGE:C>:-mno-mmx>  # 内核里不能随便用 SSE/MMX（CR0/CR4 未开启）
+        $<$<COMPILE_LANGUAGE:C>:-fno-omit-frame-pointer>  # 保留 ebp 栈帧，CLion/GDB 才能正确回溯调用栈
+        $<$<COMPILE_LANGUAGE:C>:-fno-asynchronous-unwind-tables> # 裸机用不到 .eh_frame，去掉可减小镜像
+        $<$<COMPILE_LANGUAGE:C>:-Wall> $<$<COMPILE_LANGUAGE:C>:-Wextra>
+        $<$<COMPILE_LANGUAGE:C>:-g>       # DWARF 调试信息：断点、变量、内存查看全靠它
 )
 
-# ---------- 源码自动收集 ----------
-# 根目录下的 .c 全部参与编译；.h 放进 sources 只是为了让 CLion 把它们算进 target，
-# 方便索引/跳转（CMake 不会编译头文件）。
-# CONFIGURE_DEPENDS：每次构建时让 CMake 检查目录变化，有新增/删除文件就自动重新配置。
+# ============================================================
+# 2. 源文件自动收集
+#    - *.c / *.h：根目录下全部参与编译；.h 放进 sources 只是为了让 CLion
+#      把它们算进 target，方便索引/跳转（CMake 不会编译头文件）。
+#    - *.asm：全部按 elf32 汇编（mbr.asm 除外，它要用 -f bin）。
+#      loader.asm 必须排在列表最前：CMake 按源码列表顺序把目标文件传给
+#      链接器，这样 _start 才能正好落在 0x900。
+#    CONFIGURE_DEPENDS：每次构建时让 CMake 检查目录变化，有新增/删除文件
+#    就自动重新配置，新增源码不用改这个文件。
+# ============================================================
 file(GLOB KERNEL_C_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
 )
-
-# 汇编：mbr.asm 要用 -f bin，loader.asm 必须排在链接顺序最前面（_start 必须落在 0x900），
-# 这两个单独处理；其余 .asm（gdt_flush.asm，以后新增的中断桩等）自动按 elf32 编译。
 file(GLOB KERNEL_ASM_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.asm"
 )
-list(REMOVE_ITEM KERNEL_ASM_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm"
-        "${CMAKE_CURRENT_SOURCE_DIR}/loader.asm"
-)
+list(REMOVE_ITEM KERNEL_ASM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm")
+list(REMOVE_ITEM KERNEL_ASM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/loader.asm")
+list(PREPEND KERNEL_ASM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/loader.asm")
 
 # 产出目录统一放在 CLion 的构建目录里（源码树保持干净）
 set(OUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -69,68 +79,18 @@ set(OUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(GDB_PORT 1234 CACHE STRING "QEMU gdbserver 监听端口")
 
 # ============================================================
-# 2. loader.asm -> loader.o（elf32，因为它 extern c_main）
-#    -F dwarf -g：让汇编代码也有行号信息，可以进汇编单步调
-# ============================================================
-set(LOADER_OBJ ${OUT_DIR}/loader.o)
-add_custom_command(
-        OUTPUT  ${LOADER_OBJ}
-        COMMAND ${NASM_EXECUTABLE} -f elf32 -F dwarf -g
-                ${CMAKE_CURRENT_SOURCE_DIR}/loader.asm -o ${LOADER_OBJ}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/loader.asm
-        COMMENT "NASM [elf32] loader.asm -> loader.o"
-        VERBATIM
-)
-add_custom_target(loader DEPENDS ${LOADER_OBJ})
-
-# ============================================================
-# 2b. 其余 .asm -> elf32 目标文件（gdt_flush.asm，以及以后新增的汇编）
-# ============================================================
-set(KERNEL_ASM_OBJS ""
-        isr.h
-        type.h
-        isr.c)
-foreach (asm_src IN LISTS KERNEL_ASM_SOURCES)
-    get_filename_component(asm_name ${asm_src} NAME_WE)
-    set(asm_obj ${OUT_DIR}/${asm_name}.o)
-    add_custom_command(
-            OUTPUT  ${asm_obj}
-            COMMAND ${NASM_EXECUTABLE} -f elf32 -F dwarf -g
-                    ${asm_src} -o ${asm_obj}
-            DEPENDS ${asm_src}
-            COMMENT "NASM [elf32] ${asm_name}.asm -> ${asm_name}.o"
-            VERBATIM
-    )
-    list(APPEND KERNEL_ASM_OBJS ${asm_obj})
-endforeach ()
-add_custom_target(kernel_asm DEPENDS ${KERNEL_ASM_OBJS})
-
-# ============================================================
-# 3. mbr.asm -> mbr.bin（flat 二进制，末尾 0xaa55）
-# ============================================================
-set(MBR_BIN ${OUT_DIR}/mbr.bin)
-add_custom_command(
-        OUTPUT  ${MBR_BIN}
-        COMMAND ${NASM_EXECUTABLE} -f bin
-                ${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm -o ${MBR_BIN}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm
-        COMMENT "NASM [bin] mbr.asm -> mbr.bin"
-        VERBATIM
-)
-add_custom_target(mbr DEPENDS ${MBR_BIN})
-
-# ============================================================
-# 4. 编译 C 源文件 + 链接 loader.o/汇编 -> system.elf
-#    C 源码直接作为 system 的源文件（不再用 OBJECT 库），这样 CLion 拿到的
+# 3. 汇编 + C -> system.elf
+#    源码直接作为 system 的源文件（不用 OBJECT 库），这样 CLion 拿到的
 #    编译上下文是完整的，头文件里的 #include 也能正确解析。
 #    它是裸机 ELF（不能跑在宿主机上），但符号表和 QEMU 里的地址完全一致。
 #    -nostdlib -static -no-pie : 不要 crt、不要标准库、不要 PIE
-#    -Wl,-Ttext=0x900          : 必须和 mbr.asm 的 LOADER_BASE_ADDR 一致
-#    顺序不能换：loader.o 在前，保证 _start 位于 0x900
+#    -Wl,-T,linker.ld          : 用项目自带链接脚本，基址 0x900（必须和 mbr.asm 的
+#                                LOADER_BASE_ADDR 一致），pmm.c 用的 _kernel_end
+#                                也由它定义
+#    顺序不能换：KERNEL_ASM_SOURCES 里 loader.asm 在最前，保证 _start 位于 0x900
 # ============================================================
 add_executable(system
-        ${LOADER_OBJ}
-        ${KERNEL_ASM_OBJS}
+        ${KERNEL_ASM_SOURCES}
         ${KERNEL_C_SOURCES}
 )
 target_include_directories(system PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -149,12 +109,14 @@ target_link_options(system PRIVATE
         -Wl,--build-id=none      # 别让 build-id 之类的东西插到 .text 前面污染裸二进制
         -Wl,--no-eh-frame-hdr
         -Wl,-e,_start
-        -Wl,-Ttext=0x900
+        -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/linker.ld
         -Wl,-Map=${OUT_DIR}/system.map
 )
+# 链接脚本改了也要重新链接（否则 CMake 认为目标已是最新，不会重新执行 ld）
+set_target_properties(system PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/linker.ld)
 
 # ============================================================
-# 5. system.elf -> system.bin（启动用的裸二进制）
+# 4. system.elf -> system.bin（启动用的裸二进制）
 #    只保留 .text/.rodata/.data 这些要装进内存的段，
 #    调试段和符号表不会混进镜像里
 # ============================================================
@@ -163,16 +125,62 @@ set(SYSTEM_BIN ${OUT_DIR}/system.bin)
 add_custom_command(
         OUTPUT  ${SYSTEM_BIN}
         COMMAND ${OBJCOPY_EXECUTABLE} -O binary ${SYSTEM_ELF} ${SYSTEM_BIN}
-        DEPENDS ${SYSTEM_ELF}
+        # DEPENDS 必须写目标名 system：写成 ${SYSTEM_ELF} 文件路径时 CMake 不会
+        # 接上跨目标依赖，单独构建 image/mbr 会报 No rule to make target 'system.elf'。
+        DEPENDS system
         COMMENT "OBJCOPY system.elf -> system.bin"
         VERBATIM
 )
 
 # ============================================================
+# 5. system.bin + mbr.asm -> mbr.bin（flat 二进制，末尾 0xaa55）
+#    mbr.asm 需要 KERNEL_SECTORS（内核占用的扇区数），所以必须等
+#    system.bin 生成之后再编译：扇区数 = ceil(system.bin 字节数 / 512)。
+#    构建时用一个小脚本量出真实大小，再把 -DKERNEL_SECTORS 传给 nasm，
+#    这样内核变大后不用改任何文件，重新构建即可。
+# ============================================================
+set(MBR_BUILD_SCRIPT ${OUT_DIR}/build_mbr.cmake)
+file(WRITE ${MBR_BUILD_SCRIPT} [=[
+# 由 CMakeLists.txt 自动生成：
+# 量出 system.bin 的大小，算出它占用的扇区数，作为 KERNEL_SECTORS 传给 mbr.asm。
+if(NOT NASM OR NOT MBR_ASM OR NOT MBR_BIN OR NOT SYSTEM_BIN)
+    message(FATAL_ERROR "build_mbr.cmake: 缺少 -D 参数（NASM/MBR_ASM/MBR_BIN/SYSTEM_BIN）")
+endif()
+
+file(SIZE "${SYSTEM_BIN}" KERNEL_SIZE)
+math(EXPR KERNEL_SECTORS "(${KERNEL_SIZE} + 511) / 512")
+message(STATUS "system.bin 共 ${KERNEL_SIZE} 字节 -> KERNEL_SECTORS=${KERNEL_SECTORS}")
+
+execute_process(
+        COMMAND "${NASM}" -f bin "${MBR_ASM}"
+                -DKERNEL_SECTORS=${KERNEL_SECTORS} -o "${MBR_BIN}"
+        RESULT_VARIABLE nasm_result
+)
+if(NOT nasm_result EQUAL 0)
+    message(FATAL_ERROR "nasm 编译 mbr.asm 失败（退出码 ${nasm_result}）")
+endif()
+]=])
+
+set(MBR_BIN ${OUT_DIR}/mbr.bin)
+add_custom_command(
+        OUTPUT  ${MBR_BIN}
+        COMMAND ${CMAKE_COMMAND}
+                -DNASM=${NASM_EXECUTABLE}
+                -DMBR_ASM=${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm
+                -DMBR_BIN=${MBR_BIN}
+                -DSYSTEM_BIN=${SYSTEM_BIN}
+                -P ${MBR_BUILD_SCRIPT}
+        DEPENDS ${SYSTEM_BIN} ${CMAKE_CURRENT_SOURCE_DIR}/mbr.asm ${MBR_BUILD_SCRIPT}
+        COMMENT "NASM [bin] mbr.asm (KERNEL_SECTORS 由 system.bin 大小决定) -> mbr.bin"
+        VERBATIM
+)
+add_custom_target(mbr DEPENDS ${MBR_BIN})
+
+# ============================================================
 # 6. 拼磁盘镜像
 #    LBA0 (偏移 0x0000): mbr.bin          <- BIOS 从这里引导
 #    LBA2 (偏移 0x0400): system.bin       <- mbr.asm 里 LOADER_START_ADDR equ 0x2
-#    最后填充到 1MiB，避免 MBR 连续读 15 个扇区时越界
+#    最后填充到 1MiB，保证镜像足够大，内核扇区数变化时也不会越界
 # ============================================================
 set(OS_IMAGE ${OUT_DIR}/os.img)
 add_custom_command(
