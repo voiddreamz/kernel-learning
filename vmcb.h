@@ -20,19 +20,22 @@ struct vmcb_seg {
 
 // 1. 控制区 (准确占据 0x000 ~ 0x3FF，共 1024 字节)
 struct vmcb_control_area {
-    int32 intercept_cr_read;   // 0x00
-    int32 intercept_cr_write;  // 0x04
-    int32 intercept_exceptions;// 0x08
+    int16 intercept_cr_read;   // 0x00  CR0-CR15 读拦截
+    int16 intercept_cr_write;  // 0x02  CR0-CR15 写拦截
+    int16 intercept_dr_read;   // 0x04  DR0-DR15 读拦截
+    int16 intercept_dr_write;  // 0x06  DR0-DR15 写拦截
+    int32 intercept_exceptions;// 0x08  异常拦截
     int32 intercept_instr1;    // 0x0C (Bit 18=CPUID, Bit 24=HLT...)
     int32 intercept_instr2;    // 0x10 (Bit 0=VMRUN, Bit 1=VMMCALL)
 
-    int8  pad1[92];            // 0x14 填补到 0x70
-
+    int8  pad1[68];            // 0x14 ~ 0x57（内含 pause 过滤、IOPM/MSRPM 指针等，本阶段用不到）
+    int32 guest_asid;
+    int8 pad2[20];
     int64 exitcode;            // 0x70 (极度重要：虚拟机死因)
     int64 exitinfo1;           // 0x78
     int64 exitinfo2;           // 0x80
 
-    int8  pad2[888];           // 0x88 填补到 0x400，精确凑齐 1024 字节
+    int8  pad3[888];           // 0x88 填补到 0x400，精确凑齐 1024 字节
 };
 
 // 2. 状态区 (准确占据 0x400 ~ 0xFFF，共 3072 字节)
@@ -81,4 +84,11 @@ struct vmcb {
 };
 
 #pragma pack(pop)
+#include <stddef.h>
+_Static_assert(sizeof(struct vmcb) == 0x1000, "VMCB 必须 4KB");
+_Static_assert(offsetof(struct vmcb_control_area, intercept_instr2) == 0x10, "");
+_Static_assert(offsetof(struct vmcb_control_area, guest_asid)     == 0x58, "");
+_Static_assert(offsetof(struct vmcb_control_area, exitcode)       == 0x70, "");
+_Static_assert(offsetof(struct vmcb, state.cs)   == 0x410, "");
+_Static_assert(offsetof(struct vmcb, state.rip)  == 0x578, "");
 #endif //KERNEL_VMCB_H

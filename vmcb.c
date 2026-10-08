@@ -10,6 +10,15 @@
 extern int32 pmm_malloc_page();
 extern void guest_payload_start();
 
+static inline void vmrun_trigger(struct vmcb* my_vmcb) {
+    __asm__ __volatile__(
+        "vmrun"
+        :
+        : "a"((uint32_t)my_vmcb)
+        : "memory", "cc"
+    );
+}
+
 void init_vmcb_seg(struct vmcb_seg *vmcb_seg,int16 select,int16 attribute) {
     vmcb_seg->selector = select;
     vmcb_seg->base = 0;
@@ -33,24 +42,28 @@ void start_vm() {
     my_vmcb->state.cr0=0x00000011;
     //加载第一个程序
     my_vmcb->state.rip=(int64)(int32)&guest_payload_start;
+    my_vmcb->control.guest_asid = 1;
     //调节控制区
     // 拦截 VMMCALL 指令
-    my_vmcb->control.intercept_instr2 |= (1 << 1);
+    my_vmcb->control.intercept_instr2 |= (1 << 0) |  (1 << 1);
     print_memory("VMRUN",10,14);
-    __asm__ __volatile__(
-        "vmrun"
-        :
-        : "a"((uint32_t)my_vmcb)
-        : "memory", "cc"
-    );
-    if (my_vmcb->control.exitcode == 0x81) {
-        // 0x81 是 AMD 官方手册规定的 VMMCALL 退出码
-        print_memory("SUCCESS! VM exited via VMMCALL.",12, 10); // 亮绿色
-    } else if (my_vmcb->control.exitcode == -1) {
-        // -1 (0xFFFFFFFFFFFFFFFF) 是 VMEXIT_INVALID，代表你填的 VMCB 格式有错
-        print_memory("FATAL: VMCB state is invalid!",12, 12); // 亮红色
-    } else {
-        // 其他未知原因（比如缺页、非法指令）
-        print_memory("VM exited for other reasons.", 12,12);
+    while (1) {
+        int h=0;
+        vmrun_trigger(my_vmcb);
+        int64 exitcode = my_vmcb->control.exitcode;
+        if (exitcode == 0x81) {
+            // 0x81 是 AMD 官方手册规定的 VMMCALL 退出码
+            print_memory("SUCCESS! VM exited via VMMCALL.",11, 10); // 亮绿色
+            my_vmcb->state.rip += 3;
+            print_memory("Resuming Guest...", 12+h,11); // 浅蓝色，表示我们把它放回去了
+        } else if (exitcode == -1) {
+            // -1 (0xFFFFFFFFFFFFFFFF) 是 VMEXIT_INVALID，代表你填的 VMCB 格式有错
+            print_memory("FATAL: VMCB state is invalid!",13, 12); // 亮红色
+            break;
+        } else {
+            // 其他未知原因（比如缺页、非法指令）
+            print_memory("VM exited for other reasons.", 12,12);
+            break;
+        }
     }
 }
