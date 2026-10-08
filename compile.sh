@@ -18,6 +18,20 @@ cd "$(dirname "$0")"
 
 BUILD_DIR=build
 
+# ---------- QEMU 运行参数（和 CMakeLists.txt 里的 QEMU_CPU/QEMU_MEMORY 保持一致）----------
+# 优先 32 位的 qemu-system-i386：guest 是 32 位内核，它的 GDB 寄存器包和 GDB 从
+# system.elf 推断的 i386 架构匹配；qemu-system-x86_64 会发 64 位包，GDB 报
+# "Remote 'g' packet reply is too long"。x86_64 只作兜底。
+if command -v qemu-system-i386 >/dev/null 2>&1; then
+    QEMU=qemu-system-i386
+else
+    QEMU=qemu-system-x86_64
+fi
+# +svm 必须保留：否则 CPUID 不会报告 AMD-V，内核 check_svm_support() 会判为不支持；
+# 内存必须和 pmm.c 的 MEMORY_MB (512) 一致。
+QEMU_CPU=qemu64,+svm
+QEMU_MEM=512M
+
 require() {
     command -v "$1" >/dev/null 2>&1 || {
         echo "错误：找不到 $1，请先安装。" >&2
@@ -117,7 +131,7 @@ check_image() {
         echo "错误：$BUILD_DIR/os.img 不存在，先执行 ./compile.sh build" >&2
         exit 1
     }
-    require qemu-system-x86_64
+    require "$QEMU"
 }
 
 run_qemu() {
@@ -127,7 +141,7 @@ run_qemu() {
     # 3. 虚拟机启动阶段
     # ==========================================
     echo "启动 QEMU..."
-    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M -cpu qemu64,+svm
+    "$QEMU" -drive format=raw,file="$BUILD_DIR/os.img" -m "$QEMU_MEM" -cpu "$QEMU_CPU"
 }
 
 debug_qemu() {
@@ -140,7 +154,7 @@ debug_qemu() {
     #       -ex "target remote localhost:1234"
     echo "启动 QEMU（已暂停），gdbserver: localhost:1234"
     echo "符号文件: $BUILD_DIR/system.elf"
-    qemu-system-x86_64 -drive format=raw,file="$BUILD_DIR/os.img" -m 512M -cpu qemu64,+svm \
+    "$QEMU" -drive format=raw,file="$BUILD_DIR/os.img" -m "$QEMU_MEM" -cpu "$QEMU_CPU" \
         -gdb tcp::1234 -S -no-reboot
 }
 

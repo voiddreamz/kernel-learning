@@ -9,7 +9,7 @@
 //其中PAGE_SIZE每个页框由4KB组成,那么一共需要FRAME_SIZE个bit(0/1)来储存状态,则需要FRAME_SIZE/32个地址(HEX)来储存
 
 #define PAGE_SIZE 4096
-#define MEMORY_MB 128
+#define MEMORY_MB 512   // 必须与 compile.sh 的 QEMU_MEM 及 CMakeLists.txt 的 QEMU_MEMORY 一致
 #define MEMORY_SIZE (MEMORY_MB * 1024 * 1024)
 #define FRAME_SIZE (MEMORY_SIZE / PAGE_SIZE)
 #define BITMAP_SIZE (FRAME_SIZE / 32)
@@ -54,9 +54,7 @@ int32 pmm_malloc_page() {
                 int32 index = (i * 32) + j;
                 if (!check_bit(index)) {
                     set_bit(index);
-                    // 返回物理地址（页框号 * 4KB），和 pmm_free_page(addr) 以及
-                    // page_init() 里直接当指针用的写法保持一致
-                    return index;
+                    return index * 4096;
                 }
             }
         }

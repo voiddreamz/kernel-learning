@@ -26,8 +26,8 @@ static inline void enable_paging() {
 }
 
 void page_init() {
-    int32* page_dic= (int32 *)(pmm_malloc_page() * 4096);
-    int32* page_table= (int32 *)(pmm_malloc_page() * 4096);
+    int32* page_dic= (int32 *)pmm_malloc_page();
+    int32* page_table= (int32 *)pmm_malloc_page();
     //clear
     for (int i=0; i < 1024; i++) {
         page_table[i]= 0;

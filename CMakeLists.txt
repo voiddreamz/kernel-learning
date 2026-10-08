@@ -22,6 +22,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_program(NASM_EXECUTABLE nasm REQUIRED)
 find_program(DD_EXECUTABLE   dd   REQUIRED)
 find_program(TRUNCATE_EXECUTABLE truncate)
+# 优先 qemu-system-i386：guest 是 32 位内核，i386 目标的 GDB 寄存器包正好匹配
+# GDB 从 system.elf 推断出的 i386 架构；qemu-system-x86_64 会发 64 位寄存器包，
+# GDB 报 "Remote 'g' packet reply is too long (expected 312, got 608)"。
+# x86_64 仅作兜底（真用到时需要在 GDB 里 set architecture i386:x86-64）。
 find_program(QEMU_EXECUTABLE NAMES qemu-system-i386 qemu-system-x86_64)
 if (CMAKE_OBJCOPY)
     set(OBJCOPY_EXECUTABLE ${CMAKE_OBJCOPY})
@@ -77,6 +81,12 @@ set(OUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 # QEMU gdbserver 端口，调试时 GDB 连到这个端口
 set(GDB_PORT 1234 CACHE STRING "QEMU gdbserver 监听端口")
+
+# ---------- QEMU 运行参数（所有启动入口共用，别各写各的）----------
+# +svm 必须保留：否则 CPUID 不会报告 AMD-V，内核 check_svm_support() 会判为不支持
+set(QEMU_CPU "qemu64,+svm" CACHE STRING "QEMU CPU 模型（+svm 供内核检测 AMD-V）")
+# 内存必须和 pmm.c 的 MEMORY_MB (512) 以及 compile.sh 的 -m 一致
+set(QEMU_MEMORY "512M" CACHE STRING "QEMU 虚拟机内存（需与 pmm.c 的 MEMORY_MB 一致）")
 
 # ============================================================
 # 3. 汇编 + C -> system.elf
@@ -210,7 +220,8 @@ if (QEMU_EXECUTABLE)
             COMMAND ${QEMU_EXECUTABLE}
                     -drive file=${OS_IMAGE},format=raw,if=ide
                     -boot c
-                    -m 64M
+                    -m ${QEMU_MEMORY}
+                    -cpu ${QEMU_CPU}
             DEPENDS ${OS_IMAGE}
             WORKING_DIRECTORY ${OUT_DIR}
             COMMENT "QEMU ${OS_IMAGE}"
@@ -222,7 +233,8 @@ if (QEMU_EXECUTABLE)
             COMMAND ${QEMU_EXECUTABLE}
                     -drive file=${OS_IMAGE},format=raw,if=ide
                     -boot c
-                    -m 64M
+                    -m ${QEMU_MEMORY}
+                    -cpu ${QEMU_CPU}
                     -no-reboot      # 内核崩了（三重故障）就直接退出，不会被静默重启迷惑
                     -gdb tcp::${GDB_PORT}
                     -S              # 启动后先暂停，等 GDB attach
@@ -245,7 +257,7 @@ set -e
 \"${CMAKE_COMMAND}\" --build \"${OUT_DIR}\" --target image --parallel >&2
 exec \"${QEMU_EXECUTABLE}\" \\
     -drive file=\"${OS_IMAGE}\",format=raw,if=ide \\
-    -boot c -m 64M \\
+    -boot c -m ${QEMU_MEMORY} -cpu ${QEMU_CPU} \\
     -gdb tcp::${GDB_PORT} -S \"\$@\"
 ")
     file(CHMOD ${QEMU_DEBUG_SH}
@@ -262,7 +274,7 @@ set disassembly-flavor intel
 target remote localhost:${GDB_PORT}
 ")
 else ()
-    message(WARNING "未找到 qemu-system-i386 / qemu-system-x86_64，run/debug 目标不可用（镜像仍可由 image 目标生成）")
+    message(WARNING "未找到 qemu-system-x86_64 / qemu-system-i386，run/debug 目标不可用（镜像仍可由 image 目标生成）")
 endif ()
 
 # 让 CLion 的 Build（Ctrl+F9）默认把镜像编译出来

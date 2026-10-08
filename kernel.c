@@ -5,6 +5,8 @@ extern void pic_remap(int offset1, int offset2);
 extern void pmm_init();
 extern void page_init();
 extern int check_svm_support();
+extern void enable_svm();
+extern void start_vm();
 void c_main() {
     //在此处定义一个指针，它指向我们的文本显示的部分。
     gdt_install();
@@ -21,8 +23,12 @@ void c_main() {
     print_memory(message,0,0x0A);
     if (check_svm_support()) {
         print_memory(">>> AMD SVM (AMD-V) SUPPORTED BY CPU! <<<", 5,0x0A);
+        enable_svm();
+        print_memory("SVM Engine Enabled!", 6,0x0A);
+        start_vm();
     } else {
         print_memory("AMD SVM NOT SUPPORTED OR DISABLED!", 5,0x0A);
     }
+
     while (1);
 }

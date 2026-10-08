@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#define int64 uint64_t
 #define int32 uint32_t
 #define int16 uint16_t
 #define int8  uint8_t
