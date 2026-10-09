@@ -15,7 +15,7 @@ static inline void vmrun_trigger(struct vmcb* my_vmcb) {
         "vmrun"
         :
         : "a"((uint32_t)my_vmcb)
-        : "memory", "cc"
+        : "ebx", "ecx", "edx", "esi", "edi", "ebp","memory", "cc"
     );
 }
 
@@ -47,15 +47,17 @@ void start_vm() {
     // 拦截 VMMCALL 指令
     my_vmcb->control.intercept_instr2 |= (1 << 0) |  (1 << 1);
     print_memory("VMRUN",10,14);
+    my_vmcb->state.rax=0;
+    int h=0;
     while (1) {
-        int h=0;
         vmrun_trigger(my_vmcb);
         int64 exitcode = my_vmcb->control.exitcode;
         if (exitcode == 0x81) {
             // 0x81 是 AMD 官方手册规定的 VMMCALL 退出码
             print_memory("SUCCESS! VM exited via VMMCALL.",11, 10); // 亮绿色
-            my_vmcb->state.rip += 3;
+            my_vmcb->state.rip += 3; // 跳过vmmcall这个指令的机器码，而它的机器码是3位的
             print_memory("Resuming Guest...", 12+h,11); // 浅蓝色，表示我们把它放回去了
+            h++;
         } else if (exitcode == -1) {
             // -1 (0xFFFFFFFFFFFFFFFF) 是 VMEXIT_INVALID，代表你填的 VMCB 格式有错
             print_memory("FATAL: VMCB state is invalid!",13, 12); // 亮红色

@@ -34,8 +34,15 @@ struct vmcb_control_area {
     int64 exitcode;            // 0x70 (极度重要：虚拟机死因)
     int64 exitinfo1;           // 0x78
     int64 exitinfo2;           // 0x80
+    // 0x90：NPT 嵌套页表eable（Bit 0 为 1 表示开启）
+    int64 np_enable;
+    int64 avic;                // 0x98 (占位)
+    int64 ghcb;                // 0xA0 (占位)
+    int64 eventinj;            // 0xA8 (占位)
 
-    int8  pad3[888];           // 0x88 填补到 0x400，精确凑齐 1024 字节
+    // 0xB0：极其重要！存放 NPT PML4 表的物理地址
+    uint64_t ncr3;
+    int8  pad3[840];           // 0x88 填补到 0x400，精确凑齐 1024 字节
 };
 
 // 2. 状态区 (准确占据 0x400 ~ 0xFFF，共 3072 字节)
