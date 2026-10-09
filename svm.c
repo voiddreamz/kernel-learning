@@ -1,5 +1,6 @@
 //
 // Created by voiddreamz on 2026/10/7.
+// 通过msr寄存器来检查和开启svm支持
 //
 #include "general.h"
 
